@@ -81,7 +81,7 @@ def login(users):
                 st.session_state["username"] = username
                 st.session_state["role"] = role
                 st.success(f"Welcome {username}!")
-                st.experimental_rerun()
+                st.rerun()
             else:
                 st.error("Invalid username or password")
     else:
@@ -93,7 +93,7 @@ def login(users):
                 st.session_state["username"] = username
                 st.session_state["role"] = role
                 st.success(f"Welcome {username}!")
-                st.experimental_rerun()
+                st.rerun()
             else:
                 st.error("Invalid PIN")
 
@@ -102,7 +102,7 @@ def logout():
         for key in ["logged_in", "username", "role"]:
             if key in st.session_state:
                 del st.session_state[key]
-        st.experimental_rerun()
+        st.rerun()
 
 def admin_panel(users):
     st.sidebar.header("Admin Panel")
