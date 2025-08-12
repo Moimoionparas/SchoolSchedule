@@ -11,7 +11,7 @@ def login():
             if verify_credentials(username, password):
                 st.session_state["logged_in"] = True
                 st.session_state["username"] = username
-                st.stop()
+                st.rerun()
             else:
                 st.error("Virheellinen käyttäjätunnus tai salasana")
 
@@ -22,6 +22,6 @@ def login():
             if verify_pin(username_pin, pin):
                 st.session_state["logged_in"] = True
                 st.session_state["username"] = username_pin
-                st.stop()
+                st.rerun()
             else:
                 st.error("Virheellinen käyttäjätunnus tai PIN-koodi")
