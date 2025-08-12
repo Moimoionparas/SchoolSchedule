@@ -4,10 +4,12 @@ import pandas as pd
 # --------- Helper Functions ---------
 def verify_credentials(username, password):
     users = st.secrets["users"]
+    st.write("Users loaded:", users)
     return username in users and users[username]["password"] == password
 
 def verify_pin(username, pin):
     users = st.secrets["users"]
+    st.write("Users loaded:", users)
     return username in users and users[username]["pin"] == pin
 
 def load_schedule(username):
