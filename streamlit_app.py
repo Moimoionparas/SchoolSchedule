@@ -1,49 +1,111 @@
 import streamlit as st
 import pandas as pd
 
-# Example weekdays list
-WEEKDAYS = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"]
+# --------- Helper Functions ---------
+def verify_credentials(username, password):
+    users = st.secrets["users"]
+    return username in users and users[username]["password"] == password
+
+def verify_pin(username, pin):
+    users = st.secrets["users"]
+    return username in users and users[username]["pin"] == pin
+
+def load_schedule(username):
+    if username not in st.session_state["schedules"]:
+        # Initialize default empty schedule for new users
+        st.session_state["schedules"][username] = pd.DataFrame({
+            "Weekday": [],
+            "Class Number": [],
+            "Class Name": [],
+            "Teacher": [],
+            "Start Time": [],
+            "End Time": [],
+            "Break": []
+        })
+    return st.session_state["schedules"][username]
+
+def save_schedule(username, df):
+    st.session_state["schedules"][username] = df
+
+# --------- Main Functions ---------
+def login():
+    st.title("Login")
+    st.write("Please login with your username/password or PIN.")
+
+    login_method = st.radio("Login method", ["Username/Password", "PIN"])
+
+    if login_method == "Username/Password":
+        username = st.text_input("Username")
+        password = st.text_input("Password", type="password")
+        if st.button("Login"):
+            if verify_credentials(username, password):
+                st.session_state["logged_in"] = True
+                st.session_state["username"] = username
+                st.experimental_rerun()
+            else:
+                st.error("Invalid username or password")
+
+    else:
+        username_pin = st.text_input("Username")
+        pin = st.text_input("PIN", type="password")
+        if st.button("Login"):
+            if verify_pin(username_pin, pin):
+                st.session_state["logged_in"] = True
+                st.session_state["username"] = username_pin
+                st.experimental_rerun()
+            else:
+                st.error("Invalid username or PIN")
+
+def logout():
+    if st.button("Logout"):
+        for key in ["logged_in", "username"]:
+            if key in st.session_state:
+                del st.session_state[key]
+        st.experimental_rerun()
 
 def schedule_editor(username):
-    # Load or initialize the schedule for the user
-    if f"{username}_schedule" not in st.session_state:
-        # Sample initial schedule DataFrame
-        df = pd.DataFrame({
-            "Weekday": ["Monday", "Monday", "Tuesday"],
-            "Break": [False, True, False],
-            "Class Number": [1, 2, 1],
-            "Class Time": ["8:00-8:45", "8:45-9:00", "8:00-8:45"],
-            "Subject": ["Math", "", "English"],
-            "Teacher": ["Mr. A", "", "Ms. B"],
-        })
-        st.session_state[f"{username}_schedule"] = df
-    else:
-        df = st.session_state[f"{username}_schedule"]
+    st.title(f"Schedule Editor - {username}")
+    df = load_schedule(username)
 
+    # Editable schedule table using st.data_editor
     edited_df = st.data_editor(
         df,
         num_rows="dynamic",
         use_container_width=True,
         column_config={
-            "Weekday": {"type": "category", "options": WEEKDAYS},
-            "Break": {"type": "bool"},
-            # other columns are editable as default (text or number)
-        }
+            "Weekday": st.column_config.Selectbox(
+                "Weekday", options=["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
+            ),
+            "Class Number": st.column_config.Number(
+                "Class Number", min_value=1, max_value=20
+            ),
+            "Class Name": st.column_config.Text("Class Name"),
+            "Teacher": st.column_config.Text("Teacher"),
+            "Start Time": st.column_config.Text("Start Time (HH:MM)"),
+            "End Time": st.column_config.Text("End Time (HH:MM)"),
+            "Break": st.column_config.Checkbox("Break"),
+        },
     )
 
-    st.session_state[f"{username}_schedule"] = edited_df
-    st.write("Your schedule:")
-    st.dataframe(edited_df)
-
+    save_schedule(username, edited_df)
+    st.success("Schedule saved!")
+    logout()
 
 def main():
-    st.title("School Schedule")
+    # Initialize schedules dict if not exists
+    if "schedules" not in st.session_state:
+        st.session_state["schedules"] = {}
 
-    # For demo purpose, just a username in session_state
+    # Keep user logged in on refresh
+    if "logged_in" not in st.session_state:
+        st.session_state["logged_in"] = False
     if "username" not in st.session_state:
-        st.session_state["username"] = "max.jamia"  # Example logged-in user
+        st.session_state["username"] = ""
 
-    schedule_editor(st.session_state["username"])
+    if not st.session_state["logged_in"]:
+        login()
+    else:
+        schedule_editor(st.session_state["username"])
 
 if __name__ == "__main__":
     main()
