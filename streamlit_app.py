@@ -67,14 +67,14 @@ def login_page():
     if login_success:
         st.session_state["logged_in"] = True
         st.session_state["username"] = username
-        st.experimental_rerun()
+        st.rerun()
 
 def logout_button():
     if st.button("Kirjaudu ulos"):
         for key in ["logged_in", "username"]:
             if key in st.session_state:
                 del st.session_state[key]
-        st.experimental_rerun()
+        st.rerun()
 
 def schedule_editor():
     username = st.session_state["username"]
