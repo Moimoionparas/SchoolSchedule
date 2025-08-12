@@ -3,7 +3,6 @@ import pandas as pd
 
 # --------- Helper Functions ---------
 def verify_credentials(username, password):
-    # Hardcoded users for demo
     users = {
         "max.jamia": {"password": "Ruokapoyta!", "pin": "051713"},
         "user1": {"password": "password1", "pin": "1234"},
@@ -19,15 +18,14 @@ def verify_pin(username, pin):
 
 def load_schedule(username):
     if username not in st.session_state["schedules"]:
-        # Initialize empty schedule
         st.session_state["schedules"][username] = pd.DataFrame({
-            "Viikonpäivä": [],
-            "Tunti": [],
-            "Aihe": [],
-            "Opettaja": [],
-            "Alkuaika": [],
-            "Loppuaika": [],
-            "Tauko": []
+            "Viikonpäivä": pd.Series(dtype="string"),
+            "Tunti": pd.Series(dtype="Int64"),
+            "Aihe": pd.Series(dtype="string"),
+            "Opettaja": pd.Series(dtype="string"),
+            "Alkuaika": pd.Series(dtype="string"),
+            "Loppuaika": pd.Series(dtype="string"),
+            "Tauko": pd.Series(dtype="bool"),
         })
     return st.session_state["schedules"][username]
 
@@ -75,24 +73,18 @@ def schedule_editor():
     st.title(f"Aikataulun muokkaus - {username}")
     df = load_schedule(username)
 
+    weekdays = ["Maanantai", "Tiistai", "Keskiviikko", "Torstai", "Perjantai", "Lauantai", "Sunnuntai"]
+
+    # Instead of column_config.Selectbox, use dtype=string for 'Viikonpäivä' and force correct input by user manually.
     edited_df = st.data_editor(
         df,
         num_rows="dynamic",
         use_container_width=True,
-        column_config={
-            "Viikonpäivä": st.column_config.Selectbox(
-                "Viikonpäivä",
-                options=["Maanantai", "Tiistai", "Keskiviikko", "Torstai", "Perjantai", "Lauantai", "Sunnuntai"]
-            ),
-            "Tunti": st.column_config.Number(
-                "Tunti", min_value=1, max_value=20
-            ),
-            "Aihe": st.column_config.Text("Aihe"),
-            "Opettaja": st.column_config.Text("Opettaja"),
-            "Alkuaika": st.column_config.Text("Alkuaika (HH:MM)"),
-            "Loppuaika": st.column_config.Text("Loppuaika (HH:MM)"),
-            "Tauko": st.column_config.Checkbox("Tauko"),
-        },
+    )
+
+    # Optional: Replace invalid weekdays by default or leave to user
+    edited_df["Viikonpäivä"] = edited_df["Viikonpäivä"].apply(
+        lambda x: x if x in weekdays else ""
     )
 
     save_schedule(username, edited_df)
