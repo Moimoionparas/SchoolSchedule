@@ -1,20 +1,24 @@
 import streamlit as st
 import pandas as pd
 
+# --------- Hardcoded Users ---------
+USERS = {
+    "max.jamia": {"password": "Ruokapoyta!", "pin": "051713"},
+    # You can add more users here like:
+    # "user1": {"password": "pass1", "pin": "1234"},
+}
+
 # --------- Helper Functions ---------
 def verify_credentials(username, password):
-    users = st.secrets["users"]
-    return username in users and users[username]["password"] == password
+    return username in USERS and USERS[username]["password"] == password
 
 def verify_pin(username, pin):
-    users = st.secrets["users"]
-    return username in users and users[username]["pin"] == pin
+    return username in USERS and USERS[username]["pin"] == pin
 
 def load_schedule(username):
     if "schedules" not in st.session_state:
         st.session_state["schedules"] = {}
     if username not in st.session_state["schedules"]:
-        # Alusta tyhjä aikataulu uusille käyttäjille
         st.session_state["schedules"][username] = pd.DataFrame({
             "Viikonpäivä": [],
             "Tunnin numero": [],
@@ -69,7 +73,6 @@ def schedule_editor(username):
     st.title(f"Aikataulun muokkaus - {username}")
     df = load_schedule(username)
 
-    # Muokattava aikataulutaulukko st.data_editorilla
     edited_df = st.data_editor(
         df,
         num_rows="dynamic",
@@ -94,7 +97,6 @@ def schedule_editor(username):
     logout()
 
 def main():
-    # Alusta kirjautumistila, jos ei vielä ole
     if "logged_in" not in st.session_state:
         st.session_state["logged_in"] = False
     if "username" not in st.session_state:
