@@ -4,25 +4,25 @@ import pandas as pd
 # --------- Helper Functions ---------
 def verify_credentials(username, password):
     users = st.secrets["users"]
-    st.write("Users loaded:", users)
     return username in users and users[username]["password"] == password
 
 def verify_pin(username, pin):
     users = st.secrets["users"]
-    st.write("Users loaded:", users)
     return username in users and users[username]["pin"] == pin
 
 def load_schedule(username):
+    if "schedules" not in st.session_state:
+        st.session_state["schedules"] = {}
     if username not in st.session_state["schedules"]:
-        # Initialize default empty schedule for new users
+        # Alusta tyhjä aikataulu uusille käyttäjille
         st.session_state["schedules"][username] = pd.DataFrame({
-            "Weekday": [],
-            "Class Number": [],
-            "Class Name": [],
-            "Teacher": [],
-            "Start Time": [],
-            "End Time": [],
-            "Break": []
+            "Viikonpäivä": [],
+            "Tunnin numero": [],
+            "Oppiaine": [],
+            "Opettaja": [],
+            "Alkuaika": [],
+            "Loppuaika": [],
+            "Tauko": []
         })
     return st.session_state["schedules"][username]
 
@@ -31,74 +31,70 @@ def save_schedule(username, df):
 
 # --------- Main Functions ---------
 def login():
-    st.title("Login")
-    st.write("Please login with your username/password or PIN.")
+    st.title("Kirjautuminen")
+    st.write("Kirjaudu sisään käyttäjätunnuksella/salasanalla tai PIN-koodilla.")
 
-    login_method = st.radio("Login method", ["Username/Password", "PIN"])
+    login_method = st.radio("Kirjautumistapa", ["Käyttäjätunnus/Salasana", "PIN-koodi"])
 
-    if login_method == "Username/Password":
-        username = st.text_input("Username")
-        password = st.text_input("Password", type="password")
-        if st.button("Login"):
+    if login_method == "Käyttäjätunnus/Salasana":
+        username = st.text_input("Käyttäjätunnus", key="username_input")
+        password = st.text_input("Salasana", type="password", key="password_input")
+        if st.button("Kirjaudu sisään"):
             if verify_credentials(username, password):
                 st.session_state["logged_in"] = True
                 st.session_state["username"] = username
                 st.experimental_rerun()
             else:
-                st.error("Invalid username or password")
+                st.error("Virheellinen käyttäjätunnus tai salasana")
 
     else:
-        username_pin = st.text_input("Username")
-        pin = st.text_input("PIN", type="password")
-        if st.button("Login"):
+        username_pin = st.text_input("Käyttäjätunnus", key="username_pin_input")
+        pin = st.text_input("PIN-koodi", type="password", key="pin_input")
+        if st.button("Kirjaudu sisään"):
             if verify_pin(username_pin, pin):
                 st.session_state["logged_in"] = True
                 st.session_state["username"] = username_pin
                 st.experimental_rerun()
             else:
-                st.error("Invalid username or PIN")
+                st.error("Virheellinen käyttäjätunnus tai PIN-koodi")
 
 def logout():
-    if st.button("Logout"):
+    if st.button("Kirjaudu ulos"):
         for key in ["logged_in", "username"]:
             if key in st.session_state:
                 del st.session_state[key]
         st.experimental_rerun()
 
 def schedule_editor(username):
-    st.title(f"Schedule Editor - {username}")
+    st.title(f"Aikataulun muokkaus - {username}")
     df = load_schedule(username)
 
-    # Editable schedule table using st.data_editor
+    # Muokattava aikataulutaulukko st.data_editorilla
     edited_df = st.data_editor(
         df,
         num_rows="dynamic",
         use_container_width=True,
         column_config={
-            "Weekday": st.column_config.Selectbox(
-                "Weekday", options=["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
+            "Viikonpäivä": st.column_config.Selectbox(
+                "Viikonpäivä", options=["Maanantai", "Tiistai", "Keskiviikko", "Torstai", "Perjantai", "Lauantai", "Sunnuntai"]
             ),
-            "Class Number": st.column_config.Number(
-                "Class Number", min_value=1, max_value=20
+            "Tunnin numero": st.column_config.Number(
+                "Tunnin numero", min_value=1, max_value=20
             ),
-            "Class Name": st.column_config.Text("Class Name"),
-            "Teacher": st.column_config.Text("Teacher"),
-            "Start Time": st.column_config.Text("Start Time (HH:MM)"),
-            "End Time": st.column_config.Text("End Time (HH:MM)"),
-            "Break": st.column_config.Checkbox("Break"),
+            "Oppiaine": st.column_config.Text("Oppiaine"),
+            "Opettaja": st.column_config.Text("Opettaja"),
+            "Alkuaika": st.column_config.Text("Alkuaika (HH:MM)"),
+            "Loppuaika": st.column_config.Text("Loppuaika (HH:MM)"),
+            "Tauko": st.column_config.Checkbox("Tauko"),
         },
     )
 
     save_schedule(username, edited_df)
-    st.success("Schedule saved!")
+    st.success("Aikataulu tallennettu!")
     logout()
 
 def main():
-    # Initialize schedules dict if not exists
-    if "schedules" not in st.session_state:
-        st.session_state["schedules"] = {}
-
-    # Keep user logged in on refresh
+    # Alusta kirjautumistila, jos ei vielä ole
     if "logged_in" not in st.session_state:
         st.session_state["logged_in"] = False
     if "username" not in st.session_state:
