@@ -1,28 +1,28 @@
 import streamlit as st
 import pandas as pd
 
-# --- Hardcoded users ---
-USERS = {
-    "max.jamia": {"password": "Ruokapoyta!", "pin": "051713"},
-    "user1": {"password": "salasana1", "pin": "1234"},
-    "user2": {"password": "salasana2", "pin": "5678"},
-}
-
-# --- Authentication helpers ---
+# --------- Helper Functions ---------
 def verify_credentials(username, password):
-    return username in USERS and USERS[username]["password"] == password
+    # Hardcoded users for demo
+    users = {
+        "max.jamia": {"password": "Ruokapoyta!", "pin": "051713"},
+        "user1": {"password": "password1", "pin": "1234"},
+    }
+    return username in users and users[username]["password"] == password
 
 def verify_pin(username, pin):
-    return username in USERS and USERS[username]["pin"] == pin
+    users = {
+        "max.jamia": {"password": "Ruokapoyta!", "pin": "051713"},
+        "user1": {"password": "password1", "pin": "1234"},
+    }
+    return username in users and users[username]["pin"] == pin
 
-# --- Schedule helpers ---
 def load_schedule(username):
-    if "schedules" not in st.session_state:
-        st.session_state["schedules"] = {}
     if username not in st.session_state["schedules"]:
+        # Initialize empty schedule
         st.session_state["schedules"][username] = pd.DataFrame({
             "Viikonpäivä": [],
-            "Tuntinumero": [],
+            "Tunti": [],
             "Aihe": [],
             "Opettaja": [],
             "Alkuaika": [],
@@ -34,52 +34,45 @@ def load_schedule(username):
 def save_schedule(username, df):
     st.session_state["schedules"][username] = df
 
-# --- UI pages ---
-def login_page():
-    st.title("Kirjautuminen")
-    st.write("Kirjaudu sisään käyttäjätunnuksella/salasanalla tai PIN-koodilla.")
+# --------- Main Functions ---------
+def login():
+    st.title("Kirjaudu sisään")
+    st.write("Kirjaudu käyttäjätunnuksella/salasanalla tai PIN-koodilla.")
 
     login_method = st.radio("Kirjautumistapa", ["Käyttäjätunnus/Salasana", "PIN-koodi"])
 
-    login_success = False
-    username = ""
-
     if login_method == "Käyttäjätunnus/Salasana":
-        username_input = st.text_input("Käyttäjätunnus", key="username_input")
-        password_input = st.text_input("Salasana", type="password", key="password_input")
-        if st.button("Kirjaudu sisään"):
-            if verify_credentials(username_input, password_input):
-                login_success = True
-                username = username_input
+        username = st.text_input("Käyttäjätunnus")
+        password = st.text_input("Salasana", type="password")
+        if st.button("Kirjaudu"):
+            if verify_credentials(username, password):
+                st.session_state["logged_in"] = True
+                st.session_state["username"] = username
+                st.session_state["rerun_trigger"] = not st.session_state.get("rerun_trigger", False)
             else:
                 st.error("Virheellinen käyttäjätunnus tai salasana")
 
-    else:  # PIN login
-        username_pin = st.text_input("Käyttäjätunnus", key="username_pin_input")
-        pin_input = st.text_input("PIN-koodi", type="password", key="pin_input")
-        if st.button("Kirjaudu sisään"):
-            if verify_pin(username_pin, pin_input):
-                login_success = True
-                username = username_pin
+    else:
+        username_pin = st.text_input("Käyttäjätunnus")
+        pin = st.text_input("PIN-koodi", type="password")
+        if st.button("Kirjaudu"):
+            if verify_pin(username_pin, pin):
+                st.session_state["logged_in"] = True
+                st.session_state["username"] = username_pin
+                st.session_state["rerun_trigger"] = not st.session_state.get("rerun_trigger", False)
             else:
                 st.error("Virheellinen käyttäjätunnus tai PIN-koodi")
 
-    if login_success:
-        st.session_state["logged_in"] = True
-        st.session_state["username"] = username
-        st.rerun()
-
-def logout_button():
+def logout():
     if st.button("Kirjaudu ulos"):
         for key in ["logged_in", "username"]:
             if key in st.session_state:
                 del st.session_state[key]
-        st.rerun()
+        st.session_state["rerun_trigger"] = not st.session_state.get("rerun_trigger", False)
 
 def schedule_editor():
-    username = st.session_state["username"]
+    username = st.session_state.get("username", "")
     st.title(f"Aikataulun muokkaus - {username}")
-
     df = load_schedule(username)
 
     edited_df = st.data_editor(
@@ -88,10 +81,11 @@ def schedule_editor():
         use_container_width=True,
         column_config={
             "Viikonpäivä": st.column_config.Selectbox(
-                "Viikonpäivä", options=["Maanantai", "Tiistai", "Keskiviikko", "Torstai", "Perjantai", "Lauantai", "Sunnuntai"]
+                "Viikonpäivä",
+                options=["Maanantai", "Tiistai", "Keskiviikko", "Torstai", "Perjantai", "Lauantai", "Sunnuntai"]
             ),
-            "Tuntinumero": st.column_config.Number(
-                "Tuntinumero", min_value=1, max_value=20
+            "Tunti": st.column_config.Number(
+                "Tunti", min_value=1, max_value=20
             ),
             "Aihe": st.column_config.Text("Aihe"),
             "Opettaja": st.column_config.Text("Opettaja"),
@@ -103,20 +97,21 @@ def schedule_editor():
 
     save_schedule(username, edited_df)
     st.success("Aikataulu tallennettu!")
+    logout()
 
-    logout_button()
-
-# --- Main ---
 def main():
+    if "schedules" not in st.session_state:
+        st.session_state["schedules"] = {}
+
     if "logged_in" not in st.session_state:
         st.session_state["logged_in"] = False
     if "username" not in st.session_state:
         st.session_state["username"] = ""
 
-    if st.session_state["logged_in"]:
-        schedule_editor()
+    if not st.session_state["logged_in"]:
+        login()
     else:
-        login_page()
+        schedule_editor()
 
 if __name__ == "__main__":
     main()
