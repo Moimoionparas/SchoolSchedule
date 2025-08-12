@@ -1,109 +1,148 @@
 import streamlit as st
-import pandas as pd
+import sqlite3
+import bcrypt
+from datetime import time
 
-# --------- Helper Functions ---------
-def verify_credentials(username, password):
-    users = {
-        "max.jamia": {"password": "Ruokapoyta!", "pin": "051713"},
-        "user1": {"password": "password1", "pin": "1234"},
-    }
-    return username in users and users[username]["password"] == password
+DB_NAME = "users.db"
 
-def verify_pin(username, pin):
-    users = {
-        "max.jamia": {"password": "Ruokapoyta!", "pin": "051713"},
-        "user1": {"password": "password1", "pin": "1234"},
-    }
-    return username in users and users[username]["pin"] == pin
+def luo_tietokanta():
+    conn = sqlite3.connect(DB_NAME)
+    c = conn.cursor()
+    c.execute('''
+        CREATE TABLE IF NOT EXISTS users (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            username TEXT UNIQUE NOT NULL,
+            password_hash BLOB NOT NULL
+        )
+    ''')
+    conn.commit()
+    conn.close()
 
-def load_schedule(username):
-    if username not in st.session_state["schedules"]:
-        st.session_state["schedules"][username] = pd.DataFrame({
-            "Viikonpäivä": pd.Series(dtype="string"),
-            "Tunti": pd.Series(dtype="Int64"),
-            "Aihe": pd.Series(dtype="string"),
-            "Opettaja": pd.Series(dtype="string"),
-            "Alkuaika": pd.Series(dtype="string"),
-            "Loppuaika": pd.Series(dtype="string"),
-            "Tauko": pd.Series(dtype="bool"),
-        })
-    return st.session_state["schedules"][username]
+def lisaa_käyttäjä(username, password):
+    conn = sqlite3.connect(DB_NAME)
+    c = conn.cursor()
+    password_hash = bcrypt.hashpw(password.encode(), bcrypt.gensalt())
+    try:
+        c.execute("INSERT INTO users (username, password_hash) VALUES (?, ?)", (username, password_hash))
+        conn.commit()
+    except sqlite3.IntegrityError:
+        st.error("Käyttäjätunnus on jo olemassa!")
+    conn.close()
 
-def save_schedule(username, df):
-    st.session_state["schedules"][username] = df
+def tarkista_kirjautuminen(username, password):
+    conn = sqlite3.connect(DB_NAME)
+    c = conn.cursor()
+    c.execute("SELECT password_hash FROM users WHERE username = ?", (username,))
+    row = c.fetchone()
+    conn.close()
+    if row:
+        password_hash = row[0]
+        return bcrypt.checkpw(password.encode(), password_hash)
+    return False
 
-# --------- Main Functions ---------
-def login():
+# Lukujärjestys oletusdata
+DEFAULT_TIMETABLE = {
+    "Maanantai": [],
+    "Tiistai": [],
+    "Keskiviikko": [],
+    "Torstai": [],
+    "Perjantai": []
+}
+
+def kirjautuminen():
     st.title("Kirjaudu sisään")
-    st.write("Kirjaudu käyttäjätunnuksella/salasanalla tai PIN-koodilla.")
 
-    login_method = st.radio("Kirjautumistapa", ["Käyttäjätunnus/Salasana", "PIN-koodi"])
+    valinta = st.radio("Valitse", ["Kirjaudu sisään", "Rekisteröidy"])
 
-    if login_method == "Käyttäjätunnus/Salasana":
-        username = st.text_input("Käyttäjätunnus")
-        password = st.text_input("Salasana", type="password")
+    if valinta == "Rekisteröidy":
+        uusi_käyttäjä = st.text_input("Uusi käyttäjätunnus")
+        uusi_salasana = st.text_input("Uusi salasana", type="password")
+        uusi_salasana2 = st.text_input("Toista salasana", type="password")
+        if st.button("Rekisteröidy"):
+            if uusi_salasana != uusi_salasana2:
+                st.error("Salasanat eivät täsmää")
+            elif len(uusi_salasana) < 4:
+                st.error("Salasana liian lyhyt")
+            elif uusi_käyttäjä.strip() == "":
+                st.error("Käyttäjätunnus ei voi olla tyhjä")
+            else:
+                lisaa_käyttäjä(uusi_käyttäjä.strip(), uusi_salasana)
+                st.success("Rekisteröityminen onnistui! Kirjaudu sisään.")
+    else:
+        käyttäjä = st.text_input("Käyttäjätunnus")
+        salasana = st.text_input("Salasana", type="password")
         if st.button("Kirjaudu"):
-            if verify_credentials(username, password):
-                st.session_state["logged_in"] = True
-                st.session_state["username"] = username
-                st.session_state["rerun_trigger"] = not st.session_state.get("rerun_trigger", False)
+            if tarkista_kirjautuminen(käyttäjä, salasana):
+                st.session_state['kirjautunut'] = True
+                st.session_state['käyttäjä'] = käyttäjä
+                st.success(f"Tervetuloa, {käyttäjä}!")
+                st.experimental_rerun()
             else:
                 st.error("Virheellinen käyttäjätunnus tai salasana")
 
-    else:
-        username_pin = st.text_input("Käyttäjätunnus")
-        pin = st.text_input("PIN-koodi", type="password")
-        if st.button("Kirjaudu"):
-            if verify_pin(username_pin, pin):
-                st.session_state["logged_in"] = True
-                st.session_state["username"] = username_pin
-                st.session_state["rerun_trigger"] = not st.session_state.get("rerun_trigger", False)
-            else:
-                st.error("Virheellinen käyttäjätunnus tai PIN-koodi")
+def tuntien_lisays(timetable):
+    st.header("Lisää tunti lukujärjestykseen")
+    päivä = st.selectbox("Valitse viikonpäivä", list(timetable.keys()))
+    aine = st.text_input("Aine")
+    luokka = st.text_input("Luokan numero")
+    opettaja = st.text_input("Opettajan nimi")
+    alku = st.time_input("Tunnin alku", time(8, 0))
+    loppu = st.time_input("Tunnin loppu", time(8, 45))
+    välitunti = st.checkbox("Välitunti?")
 
-def logout():
-    if st.button("Kirjaudu ulos"):
-        for key in ["logged_in", "username"]:
-            if key in st.session_state:
-                del st.session_state[key]
-        st.session_state["rerun_trigger"] = not st.session_state.get("rerun_trigger", False)
+    if st.button("Lisää tunti"):
+        if välitunti:
+            aine = "Välitunti"
+            opettaja = ""
+            luokka = ""
+        tunti = {
+            "aine": aine,
+            "luokka": luokka,
+            "opettaja": opettaja,
+            "alku": alku,
+            "loppu": loppu,
+            "välitunti": välitunti
+        }
+        timetable[päivä].append(tunti)
+        st.success(f"Tunti lisätty {päivä}lle")
 
-def schedule_editor():
-    username = st.session_state.get("username", "")
-    st.title(f"Aikataulun muokkaus - {username}")
-    df = load_schedule(username)
+def nayta_lukujärjestys(timetable):
+    st.header("Viikon lukujärjestys")
+    for päivä, tunnit in timetable.items():
+        st.subheader(päivä)
+        if not tunnit:
+            st.write("Ei tunteja lisättynä.")
+        else:
+            for t in sorted(tunnit, key=lambda x: x['alku']):
+                aika = f"{t['alku'].strftime('%H:%M')} - {t['loppu'].strftime('%H:%M')}"
+                if t["välitunti"]:
+                    st.write(f"{aika} - Välitunti")
+                else:
+                    st.write(f"{aika} - {t['aine']} (Luokka {t['luokka']}, Opettaja: {t['opettaja']})")
 
-    weekdays = ["Maanantai", "Tiistai", "Keskiviikko", "Torstai", "Perjantai", "Lauantai", "Sunnuntai"]
+def app():
+    luo_tietokanta()
 
-    # Instead of column_config.Selectbox, use dtype=string for 'Viikonpäivä' and force correct input by user manually.
-    edited_df = st.data_editor(
-        df,
-        num_rows="dynamic",
-        use_container_width=True,
-    )
+    if 'kirjautunut' not in st.session_state:
+        st.session_state['kirjautunut'] = False
 
-    # Optional: Replace invalid weekdays by default or leave to user
-    edited_df["Viikonpäivä"] = edited_df["Viikonpäivä"].apply(
-        lambda x: x if x in weekdays else ""
-    )
+    if not st.session_state['kirjautunut']:
+        kirjautuminen()
+        return
 
-    save_schedule(username, edited_df)
-    st.success("Aikataulu tallennettu!")
-    logout()
+    if 'timetable' not in st.session_state:
+        st.session_state['timetable'] = DEFAULT_TIMETABLE.copy()
 
-def main():
-    if "schedules" not in st.session_state:
-        st.session_state["schedules"] = {}
+    st.sidebar.title(f"Tervetuloa, {st.session_state['käyttäjä']}!")
+    valinta = st.sidebar.radio("Valitse toiminto", ["Näytä lukujärjestys", "Lisää tunti", "Kirjaudu ulos"])
 
-    if "logged_in" not in st.session_state:
-        st.session_state["logged_in"] = False
-    if "username" not in st.session_state:
-        st.session_state["username"] = ""
-
-    if not st.session_state["logged_in"]:
-        login()
-    else:
-        schedule_editor()
+    if valinta == "Näytä lukujärjestys":
+        nayta_lukujärjestys(st.session_state['timetable'])
+    elif valinta == "Lisää tunti":
+        tuntien_lisays(st.session_state['timetable'])
+    elif valinta == "Kirjaudu ulos":
+        st.session_state['kirjautunut'] = False
+        st.experimental_rerun()
 
 if __name__ == "__main__":
-    main()
+    app()
