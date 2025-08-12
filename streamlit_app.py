@@ -1,4 +1,5 @@
 import streamlit as st
+import pandas as pd
 import json
 import os
 
@@ -11,12 +12,10 @@ USERS_FILE = "users.json"  # local users + PIN storage for demo
 # --- Helpers ---
 
 def load_users():
-    # Load users + passwords + PINs from a JSON file (simulate editable secrets)
     if os.path.exists(USERS_FILE):
         with open(USERS_FILE, "r") as f:
             return json.load(f)
     else:
-        # start with secrets users + pins from st.secrets
         users = {}
         if "users" in st.secrets:
             for u, pwd in st.secrets["users"].items():
@@ -33,22 +32,25 @@ def load_schedule(username):
     path = os.path.join(DATA_DIR, f"{username}_schedule.json")
     if os.path.exists(path):
         with open(path, "r") as f:
-            return json.load(f)
+            return pd.read_json(f)
     else:
-        # default empty schedule: subjects with empty day lists
-        return {
-            "Math": [],
-            "Physics": [],
-            "Chemistry": [],
-            "Biology": []
+        # Default schedule example as a DataFrame
+        data = {
+            "Weekday": ["Monday", "Monday", "Tuesday", "Tuesday", "Wednesday"],
+            "Class Number": [1, 2, 1, 2, 1],
+            "Class Time": ["08:00 - 09:00", "09:15 - 10:15", "08:00 - 09:00", "09:15 - 10:15", "08:00 - 09:00"],
+            "Subject": ["Math", "Physics", "Chemistry", "Biology", "Math"],
+            "Teacher": ["Smith", "Johnson", "Lee", "Davis", "Smith"],
+            "Break": [False, True, False, True, False]
         }
+        df = pd.DataFrame(data)
+        return df
 
-def save_schedule(username, schedule):
+def save_schedule(username, df):
     if not os.path.exists(DATA_DIR):
         os.makedirs(DATA_DIR)
     path = os.path.join(DATA_DIR, f"{username}_schedule.json")
-    with open(path, "w") as f:
-        json.dump(schedule, f, indent=2)
+    df.to_json(path, orient="records")
 
 def authenticate(username, password, users):
     if username == ADMIN_USERNAME and password == ADMIN_PASSWORD:
@@ -70,10 +72,10 @@ def authenticate_pin(pin, users):
 def login(users):
     st.title("Login")
     method = st.radio("Login method:", ["Username/Password", "PIN"])
-    
+
     if method == "Username/Password":
-        username = st.text_input("Username")
-        password = st.text_input("Password", type="password")
+        username = st.text_input("Username", key="login_username")
+        password = st.text_input("Password", type="password", key="login_password")
         if st.button("Login"):
             valid, role = authenticate(username, password, users)
             if valid:
@@ -81,11 +83,11 @@ def login(users):
                 st.session_state["username"] = username
                 st.session_state["role"] = role
                 st.success(f"Welcome {username}!")
-                st.rerun()
+                st.experimental_rerun()
             else:
                 st.error("Invalid username or password")
     else:
-        pin = st.text_input("Enter PIN", type="password")
+        pin = st.text_input("Enter PIN", type="password", key="login_pin")
         if st.button("Login with PIN"):
             valid, username, role = authenticate_pin(pin, users)
             if valid:
@@ -93,44 +95,46 @@ def login(users):
                 st.session_state["username"] = username
                 st.session_state["role"] = role
                 st.success(f"Welcome {username}!")
-                st.rerun()
+                st.experimental_rerun()
             else:
                 st.error("Invalid PIN")
 
 def logout():
-    if st.button("Logout"):
+    if st.sidebar.button("Logout"):
         for key in ["logged_in", "username", "role"]:
             if key in st.session_state:
                 del st.session_state[key]
-        st.rerun()
+        st.experimental_rerun()
 
 def admin_panel(users):
     st.sidebar.header("Admin Panel")
     st.sidebar.write("Manage users and schedules")
 
-    # Add user
     with st.sidebar.expander("Add User"):
-        new_user = st.text_input("New username")
-        new_pass = st.text_input("New password", type="password")
-        new_pin = st.text_input("New PIN")
-        if st.button("Add user"):
+        new_user = st.text_input("New username", key="new_user")
+        new_pass = st.text_input("New password", type="password", key="new_pass")
+        new_pin = st.text_input("New PIN", key="new_pin")
+        if st.button("Add user", key="add_user"):
             if new_user in users or new_user == ADMIN_USERNAME:
                 st.error("User already exists")
+            elif not new_user:
+                st.error("Username cannot be empty")
             else:
                 users[new_user] = {"password": new_pass, "pin": new_pin}
                 save_users(users)
                 st.success(f"User '{new_user}' added")
 
-    # Remove user
     with st.sidebar.expander("Remove User"):
-        remove_user = st.selectbox("Select user to remove", [u for u in users.keys()])
-        if st.button("Remove user"):
-            if remove_user in users:
-                del users[remove_user]
-                save_users(users)
-                st.success(f"User '{remove_user}' removed")
+        if users:
+            remove_user = st.selectbox("Select user to remove", [u for u in users.keys()], key="remove_user_select")
+            if st.button("Remove user", key="remove_user"):
+                if remove_user in users:
+                    del users[remove_user]
+                    save_users(users)
+                    st.success(f"User '{remove_user}' removed")
+        else:
+            st.write("No users to remove")
 
-    # List users
     st.sidebar.subheader("Current users")
     for u, creds in users.items():
         st.sidebar.write(f"- {u} (PIN: {creds.get('pin', '')})")
@@ -138,23 +142,28 @@ def admin_panel(users):
 def schedule_editor(username):
     st.title(f"{username}'s Schedule")
 
-    schedule = load_schedule(username)
+    df = load_schedule(username)
 
-    days = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"]
-
-    # Editable schedule: for each subject, select multiple days
-    for subject in schedule.keys():
-        selected_days = st.multiselect(f"Select days for {subject}", options=days, default=schedule[subject])
-        schedule[subject] = selected_days
+    edited_df = st.data_editor(
+        df,
+        num_rows="dynamic",
+        use_container_width=True,
+        column_config={
+            "Weekday": st.column_config.Selectbox(
+                options=["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"],
+                label="Weekday"
+            ),
+            "Break": st.column_config.Checkbox(label="Break"),
+            "Class Number": st.column_config.Number(label="Class Number", min_value=1),
+            "Class Time": st.column_config.Text(label="Class Time"),
+            "Subject": st.column_config.Text(label="Subject"),
+            "Teacher": st.column_config.Text(label="Teacher")
+        }
+    )
 
     if st.button("Save Schedule"):
-        save_schedule(username, schedule)
-        st.success("Schedule saved")
-
-    # Display current schedule summary
-    st.write("### Current Schedule")
-    for subject, days_list in schedule.items():
-        st.write(f"{subject}: {', '.join(days_list) if days_list else 'No days assigned'}")
+        save_schedule(username, edited_df)
+        st.success("Schedule saved!")
 
 def main():
     users = load_users()
